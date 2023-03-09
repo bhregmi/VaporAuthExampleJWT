@@ -1,0 +1,196 @@
+//
+//  File.swift
+//  
+//
+//  Created by Bhesh Raj Regmi on 08/03/2023.
+//
+
+import Vapor
+import JWT
+
+/*
+ // To test this route, first send the following request:
+ curl -v http://127.0.0.1:8080/me -H "Accept: application/json" -H "Authorization: Bearer test"
+
+ //This will cause UserBearerAuthenticator to authenticate the user. Once authenticated, UserSessionAuthenticator will persist the user's identifier in session storage and generate a cookie. Use the cookie from the response in a second request to the route.
+
+
+ curl --cookie "vapor-session=0PT5ast463n3jCuvWZfTVtHBV17dBYvqbh8LaYTKgzA=" http://127.0.0.1:8080/me
+ */
+
+//MARK: View Controller
+struct AuthController {
+    func loginHandler(_ req: Request) async throws -> View {
+        do {
+        return try await req.view.render("login")
+        } catch {
+            throw Abort(.internalServerError, reason: "Failed to render login template.")
+        }
+    }
+    
+    //func loginSubmitHandler(_ req: Request) async throws -> ClientTokenReponse {
+    func loginSubmitHandler(_ req: Request) async throws -> View {
+        // Validate provided credential for user
+        let username: String = try req.content.get(at: "username")
+        let password: String = try req.content.get(at: "password")
+        print("username  \(username)")
+        //Dummy Userid, usually obtained from DB
+        let userId = UUID()
+        // Get userId for provided user
+        let payload = try SessionToken(userId: userId)
+        
+        // Generate JWT client token
+        let token = try req.jwt.sign(payload)
+        //Use this if token has to be sent as response body
+    //    return ClientTokenReponse(token: try req.jwt.sign(payload))
+        
+        // Set cookie with JWT client token
+        let cookie = HTTPCookies.Value(string: token, expires: .init(timeIntervalSinceNow: 3600))
+    //    req.response.headers.setCookie(HTTPCookies)
+        
+        // do something with the username and password, like check if they are valid
+        
+//        return req.redirect(to: "/dashboard")
+        return try await req.view.render("profile", ["user": UserDetail(name: "Everest", address: "Asia")])
+    }
+    
+    func dashboardHandler(_ req: Request)async throws -> View {
+        return try await req.view.render("dashboard", ["user": UserDetail(name: "Everest2", address: "Asia2")])
+    }
+
+    func currentUserHandler(_ req: Request) async throws -> UserDetail {
+        let user = try req.auth.require(User.self)
+        print("SessionId: \(user.sessionID)")
+        return UserDetail(name: "Vaporrrr", address: "Cali")
+    }
+}
+
+//MARK: Middleware
+
+// MARK: - Bearer authenticator
+
+// This is a more robust Bearer Authenticator
+struct UserBearerAuthenticator: AsyncBearerAuthenticator {
+   func authenticate(bearer: BearerAuthorization, for request: Request) async throws {
+       // Dummy token and email for testing
+       if bearer.token == "test" {
+           let user = User(email: "hello@vapor.codes")
+           request.auth.login(user)
+       }
+   }
+}
+
+
+// MARK: - Session authenticator
+
+struct UserSessionAuthenticator: AsyncSessionAuthenticator {
+   typealias User = App.User
+   func authenticate(sessionID: String, for request: Request) async throws {
+       let user = User(email: sessionID)
+       request.auth.login(user)
+   }
+}
+
+
+//MARK: Models
+
+// JWT payload structure.
+struct TestPayload: JWTPayload {
+    // Maps the longer Swift property names to the
+    // shortened keys used in the JWT payload.
+    enum CodingKeys: String, CodingKey {
+        case subject = "sub"
+        case expiration = "exp"
+        case isAdmin = "admin"
+    }
+
+    // The "sub" (subject) claim identifies the principal that is the
+    // subject of the JWT.
+    var subject: SubjectClaim
+
+    // The "exp" (expiration time) claim identifies the expiration time on
+    // or after which the JWT MUST NOT be accepted for processing.
+    var expiration: ExpirationClaim
+
+    // Custom data.
+    // If true, the user is an admin.
+    var isAdmin: Bool
+
+    // Run any additional verification logic beyond
+    // signature verification here.
+    // Since we have an ExpirationClaim, we will
+    // call its verify method.
+    func verify(using signer: JWTSigner) throws {
+        try self.expiration.verifyNotExpired()
+    }
+}
+
+// Example JWT payload.
+struct SessionToken: Content, Authenticatable, JWTPayload {
+
+    // Constants
+    let expirationTime: TimeInterval = 60 * 15
+
+    // Token Data
+    var expiration: ExpirationClaim
+    var userId: UUID
+
+    init(userId: UUID) {
+        self.userId = userId
+        self.expiration = ExpirationClaim(value: Date().addingTimeInterval(expirationTime))
+    }
+
+    init(user: User) throws {
+        self.userId = try user.requireID()
+        self.expiration = ExpirationClaim(value: Date().addingTimeInterval(expirationTime))
+    }
+
+    func verify(using signer: JWTSigner) throws {
+        try expiration.verifyNotExpired()
+    }
+}
+
+
+struct User: Authenticatable, Content {
+    //Generates random dummy UUID
+//    var id: String = UUID().uuidString
+    var id: UUID?
+    var email: String
+    
+    init(id: UUID? = nil, email: String) {
+        self.id = id
+        self.email = email
+    }
+}
+
+extension User {
+    func requireID() throws -> UUID {
+        guard let id = self.id else {
+            throw Abort(.internalServerError, reason: "ID is missing for user")
+        }
+        return id
+    }
+}
+
+// To conform to SessionAuthenticatable, you will need to specify a sessionID. This is the value that will be stored in the session data and must uniquely identify the user.
+
+extension User: SessionAuthenticatable {
+    var sessionID: String {
+        self.email
+    }
+}
+
+struct UserDetail: Content {
+//    var name: String
+    var name: String
+    var address: String
+}
+
+// This is to send the token response after login
+struct ClientTokenReponse: Content {
+    var token: String
+}
+
+
+
+
