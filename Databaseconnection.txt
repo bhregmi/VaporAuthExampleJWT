@@ -1,0 +1,68 @@
+//
+//  File.swift
+//  
+//
+//  Created by Bhesh Raj Regmi on 09/03/2023.
+//
+
+import Vapor
+import SwiftOracle
+/*
+/*
+ //.env file in root folder
+ 
+ TNS_NAME=Docker_Oracle
+ DATABASE_USER=b
+ DATABASE_PASSW=bregmi1
+ LOG_LEVEL=debug, trace
+ */
+
+// MARK: - Basic authenticator
+
+// This is a more robust Basic Authenticator, It relies on storing hashed passowrds and salts in the database.
+struct UserAuthenticator: AsyncBasicAuthenticator {
+   typealias User = App.User
+
+   func authenticate(
+       basic: BasicAuthorization,
+       for request: Request
+   ) async throws {
+       if isAuthenticated(basicAuth: basic, for: request) {
+           request.auth.login(User(name: "vapor"))
+       }
+   }
+   
+   func isAuthenticated(basicAuth: BasicAuthorization, for req: Request) -> Bool {
+       req.logger.debug("starting user authentication in the database")
+       // getting the connection pool descriptor from the request
+       let conn = req.oraConnPool.pool.getConnection(tag: "", autoCommit: true)
+       // making sure to return the connection upon exit
+       defer {
+           req.oraConnPool.pool.returnConnection(conn: conn)
+       }
+       
+       let cursor: SwiftOracle.Cursor
+       do {
+           cursor = try conn.cursor()
+           //SQL statement hashes the input password
+           let sqlStr = "select 1 as authed from test_username where user_name = :u and password = dbms_crypto.hash(utl_i18n.string_to_raw(:p , 'AL32UTF8'), 6)"
+           
+           req.logger.debug("executing a query")
+           
+           try cursor.execute(sqlStr, params: [":u": BindVar(basicAuth.username), ":p": BindVar(basicAuth.password)])
+
+           // fetch the data
+           guard let row = cursor.fetchone(), row["AUTHED"]?.int == 1 else {
+               req.logger.debug("username and password combination did not match any record in the database")
+               return false
+           }
+           req.logger.debug("username and password matched to a record in the database")
+           return true // authenticated
+       } catch {
+           req.logger.error(Logger.Message(stringLiteral: error.localizedDescription))
+           return false
+       }
+   }
+   
+}
+ */
