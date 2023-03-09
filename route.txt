@@ -1,0 +1,61 @@
+import Fluent
+import FluentSQLiteDriver
+import Vapor
+import SwiftOracle
+
+//Check using CURL
+//curl http://127.0.0.1:8080/me -u "ram123:nepal123"
+func routes(_ app: Application) throws {
+    app.get { req async in
+        "It works!"
+    }
+
+    app.get("hello") { req async -> String in
+        "Hello, world!"
+    }
+    
+    try app.register(collection: TodoController())
+    
+    //MARK: For login page
+    let authController = AuthController()
+    // Create protected route group which requires user auth.
+    let protected = app.routes.grouped([
+        app.sessions.middleware,
+        UserSessionAuthenticator(),
+        UserBearerAuthenticator(),
+        User.guardMiddleware(),
+    ])
+
+    // Add GET /me route for reading user's email.
+    protected.get("me") { req -> String in
+        try req.auth.require(User.self).email
+    }
+    
+    // Add GET /login route for rendering login page
+    app.get("login", use: authController.loginHandler)
+    
+    //Send username and passowrd through this route
+    app.post("login", use: authController.loginSubmitHandler)
+    
+    //Move to dashboard page
+    protected.get("dashboard", use: authController.dashboardHandler)
+    
+    //Move to current user page
+    app.get("currentuser", use: authController.currentUserHandler)
+    
+  
+    
+    
+    
+    
+    
+    
+//    app.post("login") { req -> ClientTokenReponse in
+//        // Validate provided credential for user
+//        // Get userId for provided user
+//        let payload = try SessionToken(userId: userId)
+//        return ClientTokenReponse(token: try req.jwt.sign(payload))
+//    }
+    
+}
+
