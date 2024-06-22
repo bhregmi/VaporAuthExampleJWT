@@ -12,8 +12,8 @@ import SwiftOracle
  //.env file in root folder
  
  TNS_NAME=Docker_Oracle
- DATABASE_USER=b
- DATABASE_PASSW=bregmi1
+ DATABASE_USER=apple
+ DATABASE_PASSW=passwordnew
  LOG_LEVEL=debug, trace
  */
 
